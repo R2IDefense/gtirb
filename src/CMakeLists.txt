@@ -142,12 +142,6 @@ target_link_libraries(
   PRIVATE gtirb_proto
 )
 
-if(PROTOBUF_VERSION VERSION_GREATER_EQUAL "3.15.0")
-  # Link against teh required Abseil libraries for Protobuf 3.15.0 or later
-  target_link_libraries(${PROJECT_NAME} absl::base absl::strings  absl::str_format_internal absl::log_internal_format 
-                        absl::time absl::synchronization)
-endif()
-
 target_compile_definitions(
   ${PROJECT_NAME} PRIVATE GTIRB_${PROJECT_NAME}_EXPORTS
 )
