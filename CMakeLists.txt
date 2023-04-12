@@ -331,6 +331,10 @@ if(CXX_API)
     # MSVC's "conversion from 'size_t' to 'int', possible loss of data" warning.
     add_compile_options(-wd4267)
 
+    # C4834: protobuf api call, discarding return value of function with 'nodiscard' attribute
+    # IR.cpp loadJSON and saveJSON 
+    add_compile_options(-wd4834)
+
     # Release target options
     add_compile_options($<$<CONFIG:Release>:-GL>) # Enable whole program
                                                   # optimization
