@@ -219,6 +219,7 @@ ErrorOr<IR*> IR::load(Context& C, std::istream& In) {
   In >> res1;
 
   uint8_t protobuf_version;
+  
   In >> protobuf_version;
   if (protobuf_version != GTIRB_PROTOBUF_VERSION) {
     std::stringstream ss;
