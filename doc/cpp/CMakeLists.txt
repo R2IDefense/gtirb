@@ -1,7 +1,7 @@
 # based on sample in https://majewsky.wordpress.com/2010/08/14/tip-of-the-day-
 # cmake-and-doxygen/ add a target to generate API documentation with Doxygen
 
-cmake_minimum_required(VERSION 3.3)
+cmake_minimum_required(VERSION 3.5)
 
 find_package(Doxygen)
 if(DOXYGEN_FOUND)

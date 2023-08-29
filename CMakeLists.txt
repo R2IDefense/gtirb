@@ -128,8 +128,11 @@ if(GTIRB_PY_API)
     execute_process(
       COMMAND "${PYTHON}" "--version" OUTPUT_VARIABLE PYTHON_VERSION
     )
+    string(STRIP "${PYTHON_VERSION}" PYTHON_VERSION)
     string(REPLACE "Python" "" PYTHON_VERSION "${PYTHON_VERSION}")
+    string(STRIP "${PYTHON_VERSION}" PYTHON_VERSION)
 
+    message("Python version = ${PYTHON_VERSION}.")
     if("${PYTHON_VERSION}" VERSION_LESS "${PYTHON_MINIMUM_VERSION}")
       message(
         WARNING
