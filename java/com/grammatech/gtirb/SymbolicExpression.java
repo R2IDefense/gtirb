@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021 GrammaTech, Inc.
+ *  Copyright (C) 2020-2023 GrammaTech, Inc.
  *
  *  This code is licensed under the MIT license. See the LICENSE file in the
  *  project root for license terms.
@@ -15,17 +15,18 @@
 package com.grammatech.gtirb;
 
 import com.grammatech.gtirb.proto.SymbolicExpressionOuterClass;
-import java.util.ArrayList;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The Symbolic Expression class is a base class for expressions such as
  * SymAddrConst, SymAddrAddr, and SymStackConst.
  */
-public class SymbolicExpression implements TreeListItem {
+public class SymbolicExpression {
 
     /**
      * Attributes for Symbolic Expressions.
@@ -120,23 +121,21 @@ public class SymbolicExpression implements TreeListItem {
         }
     }
 
-    private long offset;
-    private List<AttributeFlag> attributeFlags;
-    private List<Integer> unknownAttributeFlags;
+    private Set<AttributeFlag> attributeFlags;
+    private Set<Integer> unknownAttributeFlags;
 
-    // This is the constructor used when instantiating a sub class
-    // NOTE: Offset is not set in constructor because subclasss doesn't
-    // have it yet when calling super, so it sets it afterward.
     /**
      * Class constructor for a SymbolicExpression from a protobuf symbolic
      * expression.
      * @param  protoSymbolicExpression     The symbolic expression as serialized
      * into a protocol buffer.
      */
-    public SymbolicExpression(SymbolicExpressionOuterClass
-                                  .SymbolicExpression protoSymbolicExpression) {
-        this.attributeFlags = new ArrayList<AttributeFlag>();
-        this.unknownAttributeFlags = new ArrayList<Integer>();
+    protected SymbolicExpression(
+        SymbolicExpressionOuterClass.SymbolicExpression protoSymbolicExpression)
+        throws IOException {
+        this.attributeFlags = new HashSet<AttributeFlag>();
+        this.unknownAttributeFlags = new HashSet<Integer>();
+
         for (Integer value :
              protoSymbolicExpression.getAttributeFlagsValueList()) {
             AttributeFlag attributeFlag = AttributeFlag.fromInteger(value);
@@ -150,87 +149,78 @@ public class SymbolicExpression implements TreeListItem {
 
     /**
      * Class constructor for a SymbolicExpression.
-     * @param  offset                      Address offset of this symbolic
-     * expression in the ByteInterval.
+     * @param  attributeFlags A set of flags that are applicable to this
+     *                        symbolic expression.
      */
-    public SymbolicExpression(long offset, List<AttributeFlag> attributeFlags) {
-        this.setOffset(offset);
-        this.setAttributeFlags(attributeFlags);
-        this.setUnknownAttributeFlags(new ArrayList<Integer>());
+    protected SymbolicExpression(Set<AttributeFlag> attributeFlags) {
+        this.attributeFlags = new HashSet<AttributeFlag>();
+        for (AttributeFlag attributeFlag : attributeFlags)
+            this.addAttributeFlag(attributeFlag);
+        this.unknownAttributeFlags = new HashSet<Integer>();
     }
-
-    /**
-     * Get the offset of this SymbolicExpression.
-     *
-     * @return  Difference in address from the start of the ByteInterval to the
-     * start of the SymbolicExpression.
-     */
-
-    public long getOffset() { return offset; }
-
-    /**
-     * Get the index to manage this SymbolicExpression with.
-     *
-     * This is the index is used for storing and retrieving the
-     * SymbolicExpression, as required by the TreeListItem interface.
-     * SymbolicExpressions are ordered by offset, so this method just returns
-     * the offset.
-     * @return  The SymbolicExpression index, which is it's offset.
-     */
-    public long getIndex() { return this.offset; }
-
-    /**
-     * Get the size of this SymbolicExpression.
-     *
-     * @return  Always 0, because SymbolicExpressions by definition have no
-     * size.
-     */
-
-    public long getSize() { return offset; }
-
-    /**
-     * Set the address of this SymbolicExpression.
-     *
-     * @param offset  New value for offset of this SymbolicExpression.
-     */
-    public void setOffset(long offset) { this.offset = offset; }
 
     /**
      * Get the flags applying to this SymbolicExpression.
      *
-     * @return  A set of flags applying to this symbolic expression.
+     * @return  An unmodifiable {@link AttributeFlag} set of all the
+     * attribute flags in this {@link SymbolicExpression}.
      */
-    public List<AttributeFlag> getAttributeFlags() {
-        return this.attributeFlags;
+    public Set<AttributeFlag> getAttributeFlags() {
+        return Collections.unmodifiableSet(this.attributeFlags);
     }
 
     /**
-     * Set the attribute flags of this SymbolicExpression.
+     * Add an attribute flags to this SymbolicExpression.
      *
-     * @param attributeFlags    A set of flags that will be applied to this
-     * symbolic expression.
+     * @param attributeFlag An {@link AttributeFlag} that will be applied
+     * to this symbolic expression.
      */
-    public void setAttributeFlags(List<AttributeFlag> attributeFlags) {
-        this.attributeFlags = attributeFlags;
+    public void addAttributeFlag(AttributeFlag attributeFlag) {
+        this.attributeFlags.add(attributeFlag);
+    }
+
+    /**
+     * Remove an attribute flags from this SymbolicExpression.
+     *
+     * @param attributeFlag An {@link AttributeFlag} that will be removed
+     * from this symbolic expression.
+     * @return boolean true if this symbolic expression contained the attribute
+     * flag, and it was removed.
+     */
+    public boolean removeAttributeFlag(AttributeFlag attributeFlag) {
+        return (this.attributeFlags.remove(attributeFlag));
     }
 
     /**
      * Get unknown attribute flags applying to this SymbolicExpression.
      *
-     * @return  A set of flags applying to this symbolic expression.
+     * @return  An unmodifiable list of all the unknown attribute
+     * flags in this {@link SymbolicExpression}, as integers.
      */
-    public List<Integer> getUnknownAttributeFlags() {
-        return this.unknownAttributeFlags;
+    public Set<Integer> getUnknownAttributeFlags() {
+        return Collections.unmodifiableSet(this.unknownAttributeFlags);
     }
 
     /**
-     * Set the attribute flags of this SymbolicExpression.
+     * Add an unknown attribute flag to this SymbolicExpression.
      *
-     * @param attributeFlags    A set of flags that will be applied to this
-     * symbolic expression.
+     * @param unknownFlag An unknown attribute flag that will be applied
+     * to this symbolic expression and stored as an integer.
      */
-    public void setUnknownAttributeFlags(List<Integer> attributeFlags) {
-        this.unknownAttributeFlags = attributeFlags;
+    public void addUnknownFlag(Integer unknownFlag) {
+        this.unknownAttributeFlags.add(unknownFlag);
+    }
+
+    /**
+     * Remove an unknown attribute flag from this SymbolicExpression.
+     *
+     * @param unknownFlag An unknown attribute flag that will be removed
+     * to this symbolic expression.
+     * @return boolean true if this symbolic expression contained the attribute
+     * flag, and it was removed.
+     */
+    public boolean removeUnknownFlag(Integer unknownFlag) {
+        return (this.unknownAttributeFlags.remove(unknownFlag));
     }
 
     /**
@@ -240,9 +230,9 @@ public class SymbolicExpression implements TreeListItem {
      * symbolicExpression
      * @return An initialized SymbolicExpression.
      */
-    public static SymbolicExpression
-    fromProtobuf(SymbolicExpressionOuterClass
-                     .SymbolicExpression protoSymbolicExpression) {
+    public static SymbolicExpression fromProtobuf(
+        SymbolicExpressionOuterClass.SymbolicExpression protoSymbolicExpression)
+        throws IOException {
         return new SymbolicExpression(protoSymbolicExpression);
     }
 

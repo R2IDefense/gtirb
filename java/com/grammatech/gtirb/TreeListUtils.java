@@ -135,18 +135,21 @@ public class TreeListUtils<Type> implements Iterable<Type> {
                 long start = item.getIndex();
                 long end = start + item.getSize();
                 // Check for overlap, including end points:
-                //    (1) Item start is at or above the range start AND
+                //    (1) The range starts within the range of this interval:
+                //        Item start is at or above the range start AND
                 //        item start is at or below the range end
-                // OR (2) Item end is at or above the range start AND
+                // OR (2) The range ends within the range of this interval:
+                //        Item end is at or above the range start AND
                 //        item end is at or below the range end
-                // OR (3) Item start is below range start AND
+                // OR (3) The range includes the range of this interval
+                //        Item start is below range start AND
                 //        item end is above range end
                 // If so add it to the list to return.
-                if (start <= startIndex && start >= endIndex)
+                if (startIndex >= start && startIndex <= end)
                     resultList.add(item);
-                else if (end <= startIndex && end >= endIndex)
+                else if (endIndex >= start && endIndex <= end)
                     resultList.add(item);
-                else if (start < startIndex && end > endIndex)
+                else if (startIndex < start && endIndex > end)
                     resultList.add(item);
             }
         }
@@ -172,7 +175,8 @@ public class TreeListUtils<Type> implements Iterable<Type> {
      * Generic method for retrieving items that start at a given address range.
      *
      * @param startIndex  The start of the address range to be matched.
-     * @param endIndex    The end of the address range.
+     *     (inclusive)
+     * @param endIndex    The end of the address range. (exclusive)
      * @param tree        The tree to be matched in.
      * @return            A list of matching items.
      */
@@ -184,13 +188,13 @@ public class TreeListUtils<Type> implements Iterable<Type> {
         // First key in range can be found with ceilingKey()
         // Successive keys, if there are any, can be found with higherKey()
         Long key = tree.ceilingKey(startIndex);
-        if (key != null && key <= endIndex) {
+        if (key != null && key < endIndex) {
             resultList.addAll(tree.get(key));
             key = tree.higherKey(key);
         }
 
         // Keep adding as long as you find items in range
-        while (key != null && key <= endIndex) {
+        while (key != null && key < endIndex) {
             resultList.addAll(tree.get(key));
             key = tree.higherKey(key);
         }

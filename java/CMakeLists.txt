@@ -53,12 +53,77 @@ configure_file(
   @ONLY
 )
 
-file(
-  COPY ${CMAKE_CURRENT_SOURCE_DIR}/com/grammatech/gtirb/
-  DESTINATION ${GTIRB_JAVA_SOURCE_DIR}/com/grammatech/gtirb
-  FILES_MATCHING
-  PATTERN "*.java"
+set(GTIRB_API_JAVAS
+    auxdatacodec/BoolCodec
+    auxdatacodec/ByteCodec
+    auxdatacodec/Codec
+    auxdatacodec/FloatCodec
+    auxdatacodec/IntegerCodec
+    auxdatacodec/ListCodec
+    auxdatacodec/LongCodec
+    auxdatacodec/MapCodec
+    auxdatacodec/OffsetCodec
+    auxdatacodec/SetCodec
+    auxdatacodec/ShortCodec
+    auxdatacodec/StringCodec
+    auxdatacodec/Tuple1Codec
+    auxdatacodec/Tuple2Codec
+    auxdatacodec/Tuple3Codec
+    auxdatacodec/Tuple4Codec
+    auxdatacodec/Tuple5Codec
+    auxdatacodec/UuidCodec
+    auxdatacodec/Variant2Codec
+    auxdatacodec/Variant3Codec
+    auxdatacodec/Variant11Codec
+    tuple/Tuple1
+    tuple/Tuple2
+    tuple/Tuple3
+    tuple/Tuple4
+    tuple/Tuple5
+    variant/Token
+    variant/Variant2
+    variant/Variant3
+    variant/Variant11
+    AuxDataContainer
+    AuxDataSchema
+    AuxDataSchemas
+    ByteBlock
+    ByteInterval
+    CFG
+    CfiDirective
+    CodeBlock
+    DataBlock
+    Edge
+    ElfSectionPropertyTuple
+    ElfSymbolInfoTuple
+    ElfSymbolVersionsTable
+    IR
+    Module
+    Node
+    Offset
+    PeExportEntry
+    PeImportEntry
+    PeResourceEntry
+    ProbFuncName
+    ProxyBlock
+    Section
+    SymAddrAddr
+    SymAddrConst
+    SymbolicExpression
+    Symbol
+    TreeListItem
+    TreeListUtils
+    TypeTableEntry
+    Util
 )
+
+foreach(GTIRB_API_JAVA ${GTIRB_API_JAVAS})
+  configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/com/grammatech/gtirb/${GTIRB_API_JAVA}.java
+    ${GTIRB_JAVA_SOURCE_DIR}/com/grammatech/gtirb/${GTIRB_API_JAVA}.java
+    COPYONLY
+  )
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Creating a version file to report version information
@@ -68,59 +133,8 @@ configure_file(
   ${GTIRB_JAVA_SOURCE_DIR}/com/grammatech/gtirb/Version.java @ONLY
 )
 
-set(GTIRB_API_JAVAS
-    AuxSerialization/AuxDataSerialization
-    AuxSerialization/AuxTypeTree
-    AuxSerialization/BoolCodec
-    AuxSerialization/Codec
-    AuxSerialization/DecodeException
-    AuxSerialization/EncodeException
-    AuxSerialization/IntegerCodec
-    AuxSerialization/MappingCodec
-    AuxSerialization/OffsetCodec
-    AuxSerialization/SequenceCodec
-    AuxSerialization/SetCodec
-    AuxSerialization/StreamSerialization
-    AuxSerialization/StringCodec
-    AuxSerialization/TupleCodec
-    AuxSerialization/UnknownCodecException
-    AuxSerialization/UnknownData
-    AuxSerialization/UuidCodec
-    Alignment
-    AuxDataContainer
-    AuxData
-    ByteBlock
-    ByteInterval
-    CFG
-    CodeBlock
-    Comments
-    DataBlock
-    Edge
-    FiveTuple
-    FunctionBlocks
-    FunctionEntries
-    FunctionNames
-    IR
-    Module
-    Node
-    Offset
-    Padding
-    ProxyBlock
-    Section
-    Serialization
-    SymAddrAddr
-    SymAddrConst
-    SymbolForwarding
-    SymbolicExpression
-    Symbol
-    ThreeTuple
-    TreeListItem
-    TreeListUtils
-    TwoTuple
-    Types
-    Util
-    Version
-)
+# Append generated Version.java
+list(APPEND GTIRB_API_JAVAS Version)
 
 foreach(GTIRB_API_JAVA ${GTIRB_API_JAVAS})
   list(
@@ -180,72 +194,37 @@ if(GTIRB_ENABLE_TESTS)
        DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tests
   )
 
-  add_custom_command(
-    TARGET gtirb-java-api
-    POST_BUILD
-    COMMAND ${Java_JAVAC_EXECUTABLE} -cp ${JAR_FILE_LIST} -d
-            ${CMAKE_CURRENT_BINARY_DIR}
-            ${CMAKE_CURRENT_BINARY_DIR}/tests/testIrSanity.java
-    BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/testIrSanity.class
-    COMMENT "Building testIrSanity"
+  set(GTIRB_JAVA_TESTS
+      TestAuxData
+      TestByteIntervals
+      TestIrSanity
+      TestSymbolicExpressions
+      TestModules
+      TestSections
+      TestSymbols
+      TestTuple
+      TestVariant
   )
 
-  add_custom_command(
-    TARGET gtirb-java-api
-    POST_BUILD
-    COMMAND ${Java_JAVAC_EXECUTABLE} -cp ${JAR_FILE_LIST} -d
-            ${CMAKE_CURRENT_BINARY_DIR}
-            ${CMAKE_CURRENT_BINARY_DIR}/tests/testByteIntervals.java
-    BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/testByteIntervals.class
-    COMMENT "Building testByteIntervals"
-  )
-
-  add_custom_command(
-    TARGET gtirb-java-api
-    POST_BUILD
-    COMMAND ${Java_JAVAC_EXECUTABLE} -cp ${JAR_FILE_LIST} -d
-            ${CMAKE_CURRENT_BINARY_DIR}
-            ${CMAKE_CURRENT_BINARY_DIR}/tests/testAuxData.java
-    BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/testAuxData.class
-    COMMENT "Building testAuxData"
-  )
-
-  add_custom_command(
-    TARGET gtirb-java-api
-    POST_BUILD
-    COMMAND ${Java_JAVAC_EXECUTABLE} -cp ${JAR_FILE_LIST} -d
-            ${CMAKE_CURRENT_BINARY_DIR}
-            ${CMAKE_CURRENT_BINARY_DIR}/tests/testSymbolicExpressions.java
-    BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/testSymbolicExpressions.class
-    COMMENT "Building testSymbolicExpressions"
-  )
-
-  add_test(NAME JavaSanityTest
-           COMMAND ${Java_JAVA_EXECUTABLE} -cp ".${DIR_SEP}${JAR_FILE_LIST}"
-                   testIrSanity ${CMAKE_CURRENT_BINARY_DIR}/tests/test3.gtirb
-  )
+  foreach(GTIRB_JAVA_TEST ${GTIRB_JAVA_TESTS})
+    add_custom_command(
+      TARGET gtirb-java-api
+      POST_BUILD
+      COMMAND
+        ${Java_JAVAC_EXECUTABLE} -cp ${JAR_FILE_LIST}:${JUNIT_STANDALONE_JAR} -d
+        ${CMAKE_CURRENT_BINARY_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}/tests/${GTIRB_JAVA_TEST}.java
+      COMMENT "Building ${GTIRB_JAVA_TEST}" DEPENDS
+              ${CMAKE_CURRENT_BINARY_DIR}/tests/${GTIRB_JAVA_TEST}.java
+    )
+  endforeach()
 
   add_test(
-    NAME JavaByteIntervalsTest
-    COMMAND ${Java_JAVA_EXECUTABLE} -cp ".${DIR_SEP}${JAR_FILE_LIST}"
-            testByteIntervals ${CMAKE_CURRENT_BINARY_DIR}/tests/test3.gtirb
-  )
-
-  add_test(NAME JavaAuxDataTest
-           COMMAND ${Java_JAVA_EXECUTABLE} -cp ".${DIR_SEP}${JAR_FILE_LIST}"
-                   testAuxData ${CMAKE_CURRENT_BINARY_DIR}/tests/test3.gtirb
-  )
-
-  add_test(NAME JavaSymbolicExpressionsTest
-           COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp
-                   ".${DIR_SEP}${JAR_FILE_LIST}" testSymbolicExpressions
-  )
-
-  set_tests_properties(
-    JavaSanityTest
-    PROPERTIES PASS_REGULAR_EXPRESSION "test OK." JavaByteIntervalsTest
-    PROPERTIES PASS_REGULAR_EXPRESSION "test OK." JavaAuxDataTest
-    PROPERTIES PASS_REGULAR_EXPRESSION "test OK."
+    NAME JUnitTests
+    COMMAND
+      ${Java_JAVA_EXECUTABLE} -ea -jar ${JUNIT_STANDALONE_JAR} execute
+      --class-path ${CMAKE_CURRENT_BINARY_DIR}:${JAR_FILE_LIST}
+      --scan-class-path
   )
 
 endif()

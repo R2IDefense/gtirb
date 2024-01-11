@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021 GrammaTech, Inc.
+ *  Copyright (C) 2020-2023 GrammaTech, Inc.
  *
  *  This code is licensed under the MIT license. See the LICENSE file in the
  *  project root for license terms.
@@ -18,10 +18,13 @@ import com.grammatech.gtirb.proto.ModuleOuterClass;
 import com.grammatech.gtirb.proto.ProxyBlockOuterClass;
 import com.grammatech.gtirb.proto.SectionOuterClass;
 import com.grammatech.gtirb.proto.SymbolOuterClass;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -67,9 +70,7 @@ public class Module extends AuxDataContainer {
      */
     public enum ByteOrder { ByteOrder_Undefined, BigEndian, LittleEndian }
 
-    private final ModuleOuterClass.Module protoModule;
-
-    private IR ir;
+    private Optional<IR> ir;
     private String binaryPath;
     private long preferredAddr;
     private long rebaseDelta;
@@ -85,11 +86,10 @@ public class Module extends AuxDataContainer {
     /**
      * Class constructor for a Module from a protobuf module.
      * @param  protoModule   The module as serialized into a protocol buffer.
-     * @param  ir            The IR that owns this Module.
      */
-    Module(ModuleOuterClass.Module protoModule, IR ir) {
+    Module(ModuleOuterClass.Module protoModule) throws IOException {
         super(protoModule.getUuid(), protoModule.getAuxDataMap());
-        this.protoModule = protoModule;
+        this.ir = Optional.empty();
         this.binaryPath = protoModule.getBinaryPath();
         this.preferredAddr = protoModule.getPreferredAddr();
         this.rebaseDelta = protoModule.getRebaseDelta();
@@ -97,11 +97,10 @@ public class Module extends AuxDataContainer {
         this.isa = ISA.values()[protoModule.getIsaValue()];
         this.name = protoModule.getName();
         this.byteOrder = ByteOrder.values()[protoModule.getByteOrderValue()];
-        this.ir = ir;
 
-        initializeSectionList();
-        initializeSymbolList();
-        initializeProxyBlockList();
+        initializeSectionList(protoModule.getSectionsList());
+        initializeSymbolList(protoModule.getSymbolsList());
+        initializeProxyBlockList(protoModule.getProxiesList());
 
         // Sections must be initialized before looking up the entry point
         UUID entryUUID = Util.byteStringToUuid(protoModule.getEntryPoint());
@@ -122,24 +121,22 @@ public class Module extends AuxDataContainer {
      * @param  symbols          A list of Symbols belonging to this Module.
      * @param  proxyBlocks      A list of ProxyBlocks belonging to this Module.
      * @param  entryPoint       The entry point of this module or null.
-     * @param  ir               The IR that owns this Module.
      */
     public Module(String binaryPath, long preferredAddr, long rebaseDelta,
                   FileFormat fileFormat, ISA isa, String name,
                   List<Section> sections, List<Symbol> symbols,
-                  List<ProxyBlock> proxyBlocks, CodeBlock entryPoint, IR ir) {
+                  List<ProxyBlock> proxyBlocks, CodeBlock entryPoint) {
         super();
-        this.protoModule = null;
+        this.ir = Optional.empty();
         this.binaryPath = binaryPath;
         this.preferredAddr = preferredAddr;
         this.rebaseDelta = rebaseDelta;
         this.fileFormat = fileFormat;
         this.isa = isa;
         this.name = name;
-        this.symbolList = symbols;
-        this.proxyBlockList = proxyBlocks;
         this.entryPoint = entryPoint;
-        this.ir = ir;
+        this.setSymbols(symbols);
+        this.setProxyBlocks(proxyBlocks);
         this.setSections(sections);
     }
 
@@ -156,24 +153,34 @@ public class Module extends AuxDataContainer {
     public Module(String binaryPath, long preferredAddr, long rebaseDelta,
                   FileFormat fileFormat, ISA isa, String name) {
         super();
-        this.protoModule = null;
+        this.ir = Optional.empty();
         this.binaryPath = binaryPath;
         this.preferredAddr = preferredAddr;
         this.rebaseDelta = rebaseDelta;
         this.fileFormat = fileFormat;
         this.isa = isa;
         this.name = name;
-        this.symbolList = new ArrayList<>();
-        this.proxyBlockList = new ArrayList<>();
+        this.symbolList = new ArrayList<Symbol>();
+        this.sectionTree = new TreeMap<Long, List<Section>>();
+        this.proxyBlockList = new ArrayList<ProxyBlock>();
         this.entryPoint = null;
     }
 
     /**
      * Get the {@link IR} this Module belongs to.
      *
-     * @return  The IR this module belongs to.
+     * @return  An Optional that contains the IR this module belongs to,
+     * or empty if it does not belong to an IR.
      */
-    public IR getIr() { return this.ir; }
+    public Optional<IR> getIr() { return this.ir; }
+
+    /**
+     * Set the {@link IR} this Module belongs to.
+     *
+     * @param  An Optional that contains the IR this module will belongs
+     * to, or empty if it should not belong to an IR.
+     */
+    void setIr(Optional<IR> ir) { this.ir = ir; }
 
     /**
      * Get the location of the corresponding binary on disk.
@@ -275,16 +282,17 @@ public class Module extends AuxDataContainer {
     public void setName(String name) { this.name = name; }
 
     /**
-     * Get the section list of this Module.
+     * Get the sections of this Module.
      *
-     * @return  The module section list.
+     * @return  An unmodifiable {@link Section} list of all the
+     * sections in this {@link Module}.
      */
     public List<Section> getSections() {
         List<Section> sectionList = new ArrayList<Section>();
         for (List<Section> entry : this.sectionTree.values()) {
             sectionList.addAll(entry);
         }
-        return sectionList;
+        return Collections.unmodifiableList(sectionList);
     }
 
     /**
@@ -292,55 +300,145 @@ public class Module extends AuxDataContainer {
      *
      * @param sectionList    The module section list.
      */
-    public void setSections(List<Section> sectionList) {
+    private void setSections(List<Section> sectionList) {
         if (sectionTree == null) {
             sectionTree = new TreeMap<Long, List<Section>>();
         } else {
             sectionTree.clear();
         }
-        for (Section section : sectionList)
+        for (Section section : sectionList) {
             TreeListUtils.insertItem(section, sectionTree);
+            section.setModule(Optional.of(this));
+        }
     }
 
     /**
-     * Add one section to this Module.
+     * Add a section to this Module.
      *
-     * @param section The section to insert.
+     * @param section  The {@link Section} to add.
      */
     public void addSection(Section section) {
-        TreeListUtils.insertItem(section, sectionTree);
+        TreeListUtils.insertItem(section, this.sectionTree);
+        section.setModule(Optional.of(this));
     }
 
     /**
-     * Get the symbol list of this Module.
+     * Remove a section from this Module.
      *
-     * @return  The module symbol list.
+     * @param section  The {@link Section} to remove.
+     * @return boolean true if the Module contained the section, and it was
+     * removed.
      */
-    public List<Symbol> getSymbols() { return this.symbolList; }
+    public boolean removeSection(Section section) {
+        if (section.getModule().isPresent() &&
+            section.getModule().get() == this) {
+            TreeListUtils.removeItem(section, this.sectionTree);
+            section.setModule(Optional.empty());
+            return true;
+        } else
+            return false;
+    }
+
+    /**
+     * Get the symbols of this Module.
+     *
+     * @return  An unmodifiable {@link Symbol} list of all the
+     * symbols in this {@link Module}.
+     */
+    public List<Symbol> getSymbols() {
+        return Collections.unmodifiableList(this.symbolList);
+    }
+
+    /**
+     * Add a symbol to this Module.
+     *
+     * @param symbol  The {@link Symbol} to add to this {@link Module}.
+     */
+    public void addSymbol(Symbol symbol) {
+        this.symbolList.add(symbol);
+        symbol.setModule(Optional.of(this));
+    }
+
+    /**
+     * Remove a symbol from this Module.
+     *
+     * @param symbol  The {@link Symbol} to remove from this {@link Module}.
+     * @return boolean true if the Module contained the symbol, and it was
+     * removed.
+     */
+    public boolean removeSymbol(Symbol symbol) {
+        if (symbol.getModule().isPresent() &&
+            symbol.getModule().get() == this &&
+            this.symbolList.remove(symbol)) {
+            symbol.setModule(Optional.empty());
+            return true;
+        } else
+            return false;
+    }
 
     /**
      * Set the symbol list of this Module.
      *
-     * @param symbolList   The module symbol list.
+     * @param symbolList    The module symbol list.
      */
-    public void setSymbols(List<Symbol> symbolList) {
-        this.symbolList = symbolList;
+    private void setSymbols(List<Symbol> symbolList) {
+        if (this.symbolList == null) {
+            this.symbolList = new ArrayList<Symbol>();
+        }
+        for (Symbol symbol : symbolList)
+            this.addSymbol(symbol);
     }
 
     /**
-     * Get the proxy block list of this Module.
+     * Get a list of proxy blocks in this Module.
      *
-     * @return  The module proxy block list.
+     * @return  An unmodifiable {@link ProxyBlock} list of all the
+     * proxy blocks in this {@link Module}.
      */
-    public List<ProxyBlock> getProxyBlocks() { return this.proxyBlockList; }
+    public List<ProxyBlock> getProxyBlocks() {
+        return Collections.unmodifiableList(this.proxyBlockList);
+    }
+
+    /**
+     * Add a proxy block to this Module.
+     *
+     * @param proxyBlock    The {@link ProxyBlock} to add to this {@link
+     * Module}.
+     */
+    public void addProxyBlock(ProxyBlock proxyBlock) {
+        this.proxyBlockList.add(proxyBlock);
+        proxyBlock.setModule(Optional.of(this));
+    }
+
+    /**
+     * Remove a proxy block from this Module.
+     *
+     * @param proxyBlock    The {@link ProxyBlock} to remove from this {@link
+     * Module}.
+     * @return boolean true if the Module contained the proxy block, and it was
+     * removed.
+     */
+    public boolean removeProxyBlock(ProxyBlock proxyBlock) {
+        if (proxyBlock.getModule().isPresent() &&
+            proxyBlock.getModule().get() == this &&
+            this.proxyBlockList.remove(proxyBlock)) {
+            proxyBlock.setModule(Optional.empty());
+            return true;
+        } else
+            return false;
+    }
 
     /**
      * Set the proxy block list of this Module.
      *
-     * @param proxyBlockList    The module proxy block list.
+     * @param proxyBlockList    The module proxyBlock list.
      */
-    public void setProxyBlocks(List<ProxyBlock> proxyBlockList) {
-        this.proxyBlockList = proxyBlockList;
+    private void setProxyBlocks(List<ProxyBlock> proxyBlockList) {
+        if (this.proxyBlockList == null) {
+            this.proxyBlockList = new ArrayList<ProxyBlock>();
+        }
+        for (ProxyBlock proxyBlock : proxyBlockList)
+            this.addProxyBlock(proxyBlock);
     }
 
     /**
@@ -377,14 +475,6 @@ public class Module extends AuxDataContainer {
     }
 
     /**
-     * Get the original protobuf of this Module.
-     *
-     * @return The protobuf the module was imported from, or
-     * null if it was not imported from a protobuf.
-     */
-    public ModuleOuterClass.Module getProtoModule() { return this.protoModule; }
-
-    /**
      * Initialize this module's sections from section protocol buffers
      *
      * When creating a Module from a protocol buffer module, use this method to
@@ -392,14 +482,14 @@ public class Module extends AuxDataContainer {
      * buffers of those sections.
      *
      */
-    private void initializeSectionList() {
+    private void
+    initializeSectionList(List<SectionOuterClass.Section> protoSectionList)
+        throws IOException {
         this.sectionTree = new TreeMap<>();
         // For each section, add to sectionList in this class
-        List<SectionOuterClass.Section> protoSectionList =
-            protoModule.getSectionsList();
         for (SectionOuterClass.Section protoSection : protoSectionList) {
-            Section newSection = Section.fromProtobuf(protoSection, this);
-            TreeListUtils.insertItem(newSection, this.sectionTree);
+            Section newSection = Section.fromProtobuf(protoSection);
+            this.addSection(newSection);
         }
     }
 
@@ -411,14 +501,14 @@ public class Module extends AuxDataContainer {
      * buffers of those symbols.
      *
      */
-    private void initializeSymbolList() {
+    private void
+    initializeSymbolList(List<SymbolOuterClass.Symbol> protoSymbolList)
+        throws IOException {
         this.symbolList = new ArrayList<Symbol>();
         // For each symbol, add to symbolList in this class
-        List<SymbolOuterClass.Symbol> protoSymbolList =
-            protoModule.getSymbolsList();
         for (SymbolOuterClass.Symbol protoSymbol : protoSymbolList) {
-            Symbol newSymbol = Symbol.fromProtobuf(protoSymbol, this);
-            symbolList.add(newSymbol);
+            Symbol newSymbol = Symbol.fromProtobuf(protoSymbol);
+            this.addSymbol(newSymbol);
         }
     }
 
@@ -430,16 +520,16 @@ public class Module extends AuxDataContainer {
      * buffers of those proxy blocks.
      *
      */
-    private void initializeProxyBlockList() {
+    private void initializeProxyBlockList(
+        List<ProxyBlockOuterClass.ProxyBlock> protoProxyBlockList)
+        throws IOException {
         this.proxyBlockList = new ArrayList<ProxyBlock>();
         // For each proxy block, add to proxyBlockList in this class
-        List<ProxyBlockOuterClass.ProxyBlock> protoProxyBlockList =
-            protoModule.getProxiesList();
         for (ProxyBlockOuterClass.ProxyBlock protoProxyBlock :
              protoProxyBlockList) {
             ProxyBlock newProxyBlock =
                 ProxyBlock.fromProtobuf(protoProxyBlock, this);
-            proxyBlockList.add(newProxyBlock);
+            this.addProxyBlock(newProxyBlock);
         }
     }
 
@@ -461,8 +551,9 @@ public class Module extends AuxDataContainer {
      * range specified.
      *
      * @param startAddress      The beginning of the address range to look for.
+     * (inclusive)
      * @param endAddress        The last address of the address range to look
-     * for.
+     * for. (exclusive)
      * @return                  A list of {@link Section} objects that intersect
      * this address range, or empty list if none.
      */
@@ -486,7 +577,9 @@ public class Module extends AuxDataContainer {
      * Find all the sections that start between a range of addresses.
      *
      * @param startAddress      The beginning of the address range to look for.
+     * (inclusive)
      * @param endAddress        The last address in the address to look for.
+     * (exclusive)
      * @return                  A list of {@link Section} objects that that
      * start at this address, or null if none.
      */
@@ -499,11 +592,11 @@ public class Module extends AuxDataContainer {
      * De-serialize this Module from a protobuf .
      *
      * @param  protoModule   The module as serialized into a protocol buffer.
-     * @param  ir            The IR that owns this Module.
      * @return An initialized Module.
      */
-    static Module fromProtobuf(ModuleOuterClass.Module protoModule, IR ir) {
-        return new Module(protoModule, ir);
+    static Module fromProtobuf(ModuleOuterClass.Module protoModule)
+        throws IOException {
+        return new Module(protoModule);
     }
 
     /**
@@ -542,11 +635,12 @@ public class Module extends AuxDataContainer {
             protoModule.addSections(section.toProtobuf());
         }
         // Add auxData by calling toProtobuf on each type
-        Map<String, AuxData> auxDataMap = getAuxDataMap();
-        Set<String> auxDataNames = auxDataMap.keySet();
-        for (String auxDataName : auxDataNames) {
-            AuxData auxData = auxDataMap.get(auxDataName);
-            protoModule.putAuxData(auxDataName, auxData.toProtobuf().build());
+        // TODO: Can this be done by AuxDataContainer, itself?
+        // Doing it here, we have to access the protected member AuxDataMap
+        // from the container.
+        for (Map.Entry<String, AuxData> entry : this.auxDataMap.entrySet()) {
+            protoModule.putAuxData(entry.getKey(),
+                                   entry.getValue().toProtobuf().build());
         }
         return protoModule;
     }

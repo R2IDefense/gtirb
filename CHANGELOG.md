@@ -1,4 +1,18 @@
-# 1.11.1 (Unreleased)
+
+# 2.0.1 (Unreleased)
+
+# 2.0.0
+
+* The Java API has been substantially reworked. Including:
+  * Most of the core API classes now have a more polished interface.
+  * The API for handling AuxData has been completely redesigned.
+  * New testing infrastructure based on JUnit5 has been added.
+  * More extensive test cases have been added.
+* Add elfStackExec and elfStackSize AuxData definitions
+* Add `IR.modules_named` helper method to Python API.
+* Add `IR.findModules(String name)` helper method to Java API.
+
+# 1.12.0
 
 * Add elfDynamicInit and elfDynamicFini AuxData definitions
 

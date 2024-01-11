@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2020-2021 GrammaTech, Inc.
+ *  Copyright (C) 2020-2023 GrammaTech, Inc.
  *
  *  This code is licensed under the MIT license. See the LICENSE file in the
  *  project root for license terms.
@@ -14,6 +14,7 @@
 
 package com.grammatech.gtirb;
 
+import com.grammatech.gtirb.Module;
 import com.grammatech.gtirb.proto.IROuterClass;
 import com.grammatech.gtirb.proto.ModuleOuterClass;
 import java.io.File;
@@ -26,7 +27,9 @@ import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * A complete internal representation. IR describes the internal representation
@@ -34,7 +37,6 @@ import java.util.List;
  */
 public class IR extends AuxDataContainer {
 
-    private IROuterClass.IR protoIR;
     private List<Module> modules;
     private CFG cfg;
     private int version; // This is the protobuf version from the protoIr
@@ -48,38 +50,37 @@ public class IR extends AuxDataContainer {
      */
     public IR() {
         super();
-        // shouldn't this be null?
-        this.protoIR = IROuterClass.IR.getDefaultInstance();
+        this.modules = new ArrayList<Module>();
     }
 
     /**
      * Class constructor for IR from an IR protobuf.
      * @param  protoIr  The {@link IR} as serialized into a protocol buffer.
      */
-    public IR(IROuterClass.IR protoIr) {
+    private IR(IROuterClass.IR protoIr) throws IOException {
         super(protoIr.getUuid(), protoIr.getAuxDataMap());
-        this.protoIR = protoIr;
     }
 
     /**
      * Load IR from protobuf.
      *
-     * @return  true if load is successful, false otherwise.
+     * @return  The {@link IR} loaded from the protobuf.
      */
-    private boolean loadProtobuf() {
+    private static IR loadProtobuf(IROuterClass.IR protoIr) throws IOException {
         // If no protobuf, can't load it.
-        if (this.protoIR == null)
-            return false;
-        this.version = protoIR.getVersion();
+        if (protoIr == null)
+            return null;
+        IR ir = new IR(protoIr);
+        ir.version = protoIr.getVersion();
         // Import the modules
-        this.modules = new ArrayList<Module>();
-        for (ModuleOuterClass.Module protoModule : protoIR.getModulesList()) {
-            Module module = Module.fromProtobuf(protoModule, this);
-            this.modules.add(module);
+        ir.modules = new ArrayList<Module>();
+        for (ModuleOuterClass.Module protoModule : protoIr.getModulesList()) {
+            Module module = Module.fromProtobuf(protoModule);
+            ir.modules.add(module);
         }
         // Import the CFG
-        this.cfg = new CFG(protoIR.getCfg());
-        return true;
+        ir.cfg = new CFG(protoIr.getCfg());
+        return ir;
     }
 
     /**
@@ -116,11 +117,12 @@ public class IR extends AuxDataContainer {
         } catch (IOException ie) {
             return null;
         }
-        IR ir = new IR(protoIr);
-        boolean rv = ir.loadProtobuf();
-        if (rv == true)
+        try {
+            IR ir = IR.loadProtobuf(protoIr);
             return ir;
-        return null;
+        } catch (IOException ie) {
+            return null;
+        }
     }
 
     /**
@@ -141,16 +143,65 @@ public class IR extends AuxDataContainer {
     /**
      * Get the list of modules belonging to this {@link IR}.
      *
-     * @return  A {@link Module} list.
+     * @return  An unmodifiable {@link Module} list of all the
+     * modules in this {@link IR}. Any attempt to remove an element of
+     * this list will throw an UnsupportedOperationException.
      */
-    public List<Module> getModules() { return this.modules; }
+    public List<Module> getModules() {
+        return Collections.unmodifiableList(this.modules);
+    }
 
     /**
-     * Set the list of modules belonging to this {@link IR}.
+     * Find modules by name.
      *
-     * @param modules  A {@link Module} list.
+     * @return A list of all {@link Module} in this {@link IR} that have a
+     * matching name.
      */
-    public void setModules(List<Module> modules) { this.modules = modules; }
+    public List<Module> findModules(String name) {
+        List<Module> modulesNamed = new ArrayList<Module>();
+        for (Module module : this.modules) {
+            if (name.equals(module.getName())) {
+                modulesNamed.add(module);
+            }
+        }
+        return modulesNamed;
+    }
+
+    /**
+     * Add a module to this {@link IR}.
+     *
+     * @param module  {@link Module} to add.
+     */
+    public void addModule(Module module) {
+        this.modules.add(module);
+        module.setIr(Optional.of(this));
+    }
+
+    /**
+     * Add a list of modules to this {@link IR}.
+     *
+     * @param modules  Modules to add.
+     */
+    public void addModules(List<Module> modules) {
+        for (Module module : modules) {
+            this.addModule(module);
+        }
+    }
+
+    /**
+     * Remove a module from this {@link IR}.
+     *
+     * @param module  {@link Module} to remove.
+     * @return boolean true if the IR contained the module and it was removed.
+     */
+    public boolean removeModule(Module module) {
+        if (module.getIr().isPresent() && module.getIr().get() == this &&
+            this.modules.remove(module)) {
+            module.setIr(Optional.empty());
+            return true;
+        }
+        return false;
+    }
 
     /**
      * Get the CFG belonging to this {@link IR}.
@@ -165,15 +216,6 @@ public class IR extends AuxDataContainer {
      * @param cfg  A {@link CFG}.
      */
     public void setCfg(CFG cfg) { this.cfg = cfg; }
-
-    /**
-     * Get the original protobuf of this {@link IR}.
-     *
-     * @return The protobuf the IR was imported from, or the IR
-     * {@link com.grammatech.gtirb.proto.IROuterClass.IR#getDefaultInstance()
-     * DefaultInstance} if it was not imported from a protobuf.
-     */
-    public IROuterClass.IR getProtoIR() { return this.protoIR; }
 
     /**
      * Get the protobuf version of this {@link IR}.

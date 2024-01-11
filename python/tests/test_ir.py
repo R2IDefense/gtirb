@@ -1,5 +1,6 @@
 import io
 import os
+import pathlib
 import tempfile
 import unittest
 
@@ -77,6 +78,19 @@ class IRTest(unittest.TestCase):
             new_ir.modules[0].aux_data["key"].data,
         )
 
+    def test_load_pathlib(self):
+        """
+        Ensure `load_protobuf` and `save_protobuf` support path-like objects
+        """
+        ir_path = pathlib.Path(IR_FILE)
+        new_ir = gtirb.IR.load_protobuf(ir_path)
+        self.assertTrue(self.ir.deep_eq(new_ir))
+        self.assertNotEqual(
+            self.ir.modules[0].aux_data["key"].data,
+            new_ir.modules[0].aux_data["key"].data,
+        )
+        new_ir.save_protobuf(ir_path)
+
 
 class NotGTIRBTest(unittest.TestCase):
     def test(self):
@@ -111,6 +125,34 @@ class BadProtobufTest(unittest.TestCase):
             gtirb.IR.load_protobuf_file(file_content)
 
         self.assertTrue("Error parsing message" in str(context.exception))
+
+
+class IRMethodTests(unittest.TestCase):
+    def test_modules_named(self):
+        """
+        Test the IR.modules_named method
+        """
+        ir = gtirb.IR()
+
+        def add_module(name: str):
+            return gtirb.Module(
+                file_format=gtirb.Module.FileFormat.RAW,
+                isa=gtirb.Module.ISA.ValidButUnsupported,
+                name=name,
+                ir=ir,
+            )
+
+        m1 = add_module("m1")
+        m2 = add_module("m2")
+        m3_a = add_module("m3")
+        m3_b = add_module("m3")
+
+        self.assertEqual(next(ir.modules_named("m1")), m1)
+        self.assertEqual(next(ir.modules_named("m2")), m2)
+        m3s = list(ir.modules_named("m3"))
+        self.assertEqual(len(m3s), 2)
+        self.assertIn(m3_a, m3s)
+        self.assertIn(m3_b, m3s)
 
 
 if __name__ == "__main__":
